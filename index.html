@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Breakoutris</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+</head>
+<body>
+    <div class="game-wrapper">
+        <img src="logo.png" alt="Breakoutris" class="game-logo">
+        
+        <div class="game-area">
+            <div class="canvas-container">
+                <!-- p5.js will inject the canvas here -->
+            </div>
+            
+            <!-- Mobile controls - positioned absolutely around the canvas -->
+            <div class="mobile-controls">
+                <!-- Tetris controls - top of the screen -->
+                <button id="tetris-left" class="control-button tetris-left">←</button>
+                <button id="tetris-right" class="control-button tetris-right">→</button>
+                <button id="tetris-rotate" class="control-button tetris-rotate">↻</button>
+                <button id="tetris-down" class="control-button tetris-down">↓</button>
+
+                <!-- Paddle controls - bottom of the screen -->
+                <button id="paddle-left" class="control-button paddle-left">←</button>
+                <button id="paddle-right" class="control-button paddle-right">→</button>
+            </div>
+        </div>
+        
+        <div class="scores">
+            <span>Tetris: <span id="tetris-score">0</span></span>
+            <span>Breakout: <span id="breakout-score">0</span></span>
+            <span>Balls: <span id="balls-remaining">3</span></span>
+        </div>
+        <button id="new-game">New Game</button>
+    </div>
+
+    <!-- Audio elements for game sounds -->
+    <audio id="sound-paddle" src="sounds/paddle.wav" preload="auto"></audio>
+    <audio id="sound-block" src="sounds/block.wav" preload="auto"></audio>
+    <audio id="sound-tetris" src="sounds/tetris.wav" preload="auto"></audio>
+    <audio id="sound-gameover" src="sounds/gameover.wav" preload="auto"></audio>
+    <audio id="sound-ball-lost" src="sounds/ball-lost.wav" preload="auto"></audio>
+    <audio id="sound-start" src="sounds/start.ogg" preload="auto"></audio>
+    
+    <script src="game.js"></script>
+</body>
+</html> 
