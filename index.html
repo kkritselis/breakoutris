@@ -30,21 +30,19 @@
             </div>
         </div>
         
-        <div class="scores">
-            <span>Tetris: <span id="tetris-score">0</span></span>
-            <span>Breakout: <span id="breakout-score">0</span></span>
-            <span>Balls: <span id="balls-remaining">3</span></span>
-        </div>
+        <!-- Hidden element to track balls remaining for JavaScript -->
+        <div id="balls-remaining" style="display: none;">5</div>
+        
         <button id="new-game">New Game</button>
     </div>
 
     <!-- Audio elements for game sounds -->
-    <audio id="sound-paddle" src="sounds/paddle.wav" preload="auto"></audio>
-    <audio id="sound-block" src="sounds/block.wav" preload="auto"></audio>
-    <audio id="sound-tetris" src="sounds/tetris.wav" preload="auto"></audio>
-    <audio id="sound-gameover" src="sounds/gameover.wav" preload="auto"></audio>
-    <audio id="sound-ball-lost" src="sounds/ball-lost.wav" preload="auto"></audio>
-    <audio id="sound-start" src="sounds/start.ogg" preload="auto"></audio>
+    <audio id="sound-paddle" src="sounds/paddle.mp3" preload="auto"></audio>
+    <audio id="sound-block" src="sounds/block.mp3" preload="auto"></audio>
+    <audio id="sound-tetris" src="sounds/tetris.mp3" preload="auto"></audio>
+    <audio id="sound-gameover" src="sounds/gameover.mp3" preload="auto"></audio>
+    <audio id="sound-ball-lost" src="sounds/ball-lost.mp3" preload="auto"></audio>
+    <audio id="sound-start" src="sounds/start.mp3" preload="auto"></audio>
     
     <script src="game.js"></script>
 </body>

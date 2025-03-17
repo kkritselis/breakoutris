@@ -36,7 +36,7 @@ const sounds = {
 let gameState = {
     tetrisScore: 0,
     breakoutScore: 0,
-    ballsRemaining: 3,
+    ballsRemaining: 5,
     grid: Array(GRID_HEIGHT).fill().map(() => Array(GRID_WIDTH).fill(null)),
     currentPiece: null,
     lastFallTime: 0,
@@ -53,7 +53,9 @@ let gameState = {
         dx: BALL_SPEED,
         dy: -BALL_SPEED,
         size: BALL_SIZE
-    }
+    },
+    countdown: 0,      // Countdown value (3,2,1,0)
+    countdownStart: 0  // Time when countdown started
 };
 
 // Tetris piece shapes
@@ -129,18 +131,58 @@ window.addEventListener('DOMContentLoaded', () => {
         };
         
         p.draw = function() {
-            p.background(0);
+            // Set a semi-transparent black background to let the grid show through
+            p.background(0, 220);
+            
+            // Draw the grid on top of the background
+            drawGrid(p);
             
             if (gameState.ballsRemaining > 0) {
-                // Update Tetris piece
-                updateTetris();
-                
-                // Update and draw game elements
-                updateBall();
-                drawBlocks(p);
-                drawCurrentPiece(p);
-                drawPaddle(p);
-                drawBall(p);
+                // Check if countdown is active
+                if (gameState.countdown > 0) {
+                    // Calculate elapsed time since countdown started
+                    const currentTime = p5Instance.millis();
+                    const elapsedTime = currentTime - gameState.countdownStart;
+                    
+                    // Each number shows for 1 second
+                    const secondsElapsed = Math.floor(elapsedTime / 1000);
+                    const currentNumber = 3 - secondsElapsed;
+                    
+                    if (currentNumber <= 0) {
+                        // Countdown finished, start the game
+                        gameState.countdown = 0;
+                        
+                        // Set ball in motion
+                        gameState.ball.dx = BALL_SPEED * (Math.random() > 0.5 ? 1 : -1);
+                        gameState.ball.dy = -BALL_SPEED;
+                    } else {
+                        // Update countdown display
+                        gameState.countdown = currentNumber;
+                        
+                        // Draw countdown number
+                        p.noStroke();
+                        p.fill(255);
+                        p.textSize(100); // Larger text for countdown (100px)
+                        p.textAlign(p.CENTER, p.CENTER);
+                        p.text(currentNumber, CANVAS_WIDTH/2, CANVAS_HEIGHT/3); // Position higher on the board
+                    }
+                    
+                    // Still draw all game elements during countdown
+                    drawBlocks(p);
+                    drawCurrentPiece(p);
+                    drawPaddle(p);
+                    drawBall(p);
+                } else {
+                    // Normal game update when countdown is over
+                    updateTetris();
+                    updateBall();
+                    
+                    // Draw game elements
+                    drawBlocks(p);
+                    drawCurrentPiece(p);
+                    drawPaddle(p);
+                    drawBall(p);
+                }
             } else {
                 // Game Over state
                 p.noStroke();
@@ -259,7 +301,8 @@ window.addEventListener('DOMContentLoaded', () => {
         };
         
         p.keyPressed = function() {
-            if (gameState.ballsRemaining <= 0) return;
+            // Don't respond to keys if game is over or during countdown
+            if (gameState.ballsRemaining <= 0 || gameState.countdown > 0) return;
             
             // Breakout controls
             if (p.keyCode === p.LEFT_ARROW) {
@@ -297,7 +340,7 @@ function resetGame() {
     // Reset game state
     gameState.tetrisScore = 0;
     gameState.breakoutScore = 0;
-    gameState.ballsRemaining = 3;
+    gameState.ballsRemaining = 5;
     gameState.grid = Array(GRID_HEIGHT).fill().map(() => Array(GRID_WIDTH).fill(null));
     gameState.currentPiece = null;
     
@@ -312,15 +355,16 @@ function resetGame() {
     };
     
     gameState.ball = {
-        x: 0,
-        y: 0,
-        dx: BALL_SPEED,
-        dy: -BALL_SPEED,
+        x: CANVAS_WIDTH / 2,
+        y: CANVAS_HEIGHT - 100,
+        dx: 0, // Start with no movement
+        dy: 0, // Start with no movement
         size: BALL_SIZE
     };
     
-    // Initialize ball position
-    resetBall();
+    // Set countdown
+    gameState.countdown = 3;
+    gameState.countdownStart = p5Instance.millis();
     
     // Initialize breakout blocks
     initializeBreakoutBlocks();
@@ -344,11 +388,12 @@ function resetGame() {
 
 function initializeBreakoutBlocks() {
     const rows = 5;
-    const startRow = Math.floor(GRID_HEIGHT * 0.65) - rows;
+    // Position breakout blocks about 2/3 down the grid
+    const startRow = Math.floor(GRID_HEIGHT * 0.7) - rows;
     const colors = Object.values(TETRIS_COLORS);
     
     // Clear any existing blocks in the target area first
-    for (let row = startRow; row < startRow + rows; row++) {
+    for (let row = startRow; row < GRID_HEIGHT; row++) {
         for (let col = 0; col < GRID_WIDTH; col++) {
             gameState.grid[row][col] = null;
         }
@@ -390,8 +435,16 @@ function resetBall() {
     
     gameState.ball.x = CANVAS_WIDTH / 2;
     gameState.ball.y = CANVAS_HEIGHT - 100;
-    gameState.ball.dx = BALL_SPEED * (Math.random() > 0.5 ? 1 : -1);
-    gameState.ball.dy = -BALL_SPEED;
+    
+    // Only set ball direction if countdown is over
+    if (gameState.countdown <= 0) {
+        gameState.ball.dx = BALL_SPEED * (Math.random() > 0.5 ? 1 : -1);
+        gameState.ball.dy = -BALL_SPEED;
+    } else {
+        // Keep ball stationary during countdown
+        gameState.ball.dx = 0;
+        gameState.ball.dy = 0;
+    }
 }
 
 function updateBall() {
@@ -573,9 +626,18 @@ function drawPaddle(p) {
         gameState.paddle.x = CANVAS_WIDTH / 2 - PADDLE_WIDTH / 2;
     }
     
+    // Draw paddle
     p.noStroke();
     p.fill(255);
     p.rect(gameState.paddle.x, gameState.paddle.y, gameState.paddle.width, gameState.paddle.height);
+    
+    // Draw balls remaining text on paddle
+    p.fill(0); // Black text
+    p.textSize(PADDLE_HEIGHT * 0.8);
+    p.textAlign(p.CENTER, p.CENTER);
+    p.text(gameState.ballsRemaining, 
+           gameState.paddle.x + gameState.paddle.width / 2, 
+           gameState.paddle.y + gameState.paddle.height / 2);
 }
 
 function drawBall(p) {
@@ -626,8 +688,7 @@ function drawBlocks(p) {
 }
 
 function updateScoreDisplay() {
-    document.getElementById('tetris-score').textContent = gameState.tetrisScore;
-    document.getElementById('breakout-score').textContent = gameState.breakoutScore;
+    // Update only the hidden balls-remaining element
     document.getElementById('balls-remaining').textContent = gameState.ballsRemaining;
 }
 
@@ -649,6 +710,9 @@ function spawnNewPiece() {
 }
 
 function updateTetris() {
+    // Don't update tetris during countdown
+    if (gameState.countdown > 0) return;
+    
     // Ensure we always have a current piece
     if (!gameState.currentPiece && gameState.ballsRemaining > 0) {
         spawnNewPiece();
@@ -677,9 +741,12 @@ function movePieceDown() {
         return;
     }
     
+    // Try moving down
     gameState.currentPiece.y++;
     
-    if (checkTetrisCollision()) {
+    // Check if this causes a collision
+    if (wouldCollide(gameState.currentPiece)) {
+        // Move back up
         gameState.currentPiece.y--;
         
         // Only lock and spawn new piece if current piece is valid
@@ -698,7 +765,7 @@ function movePieceDown() {
             spawnNewPiece();
             
             // Check for game over
-            if (checkTetrisCollision()) {
+            if (wouldCollide(gameState.currentPiece)) {
                 gameState.ballsRemaining = 0;  // End game
             }
         } else {
@@ -712,7 +779,7 @@ function movePieceSideways(direction) {
     if (!gameState.currentPiece) return;
     
     gameState.currentPiece.x += direction;
-    if (checkTetrisCollision()) {
+    if (wouldCollide(gameState.currentPiece)) {
         gameState.currentPiece.x -= direction;
     }
 }
@@ -736,46 +803,9 @@ function rotatePiece() {
     gameState.currentPiece.shape = newShape;
     
     // If collision, revert rotation
-    if (checkTetrisCollision()) {
+    if (wouldCollide(gameState.currentPiece)) {
         gameState.currentPiece.shape = oldPieceShape;
     }
-}
-
-function checkTetrisCollision() {
-    if (!gameState.currentPiece) return false;
-    
-    const piece = gameState.currentPiece;
-    const shape = piece.shape;
-    
-    // First check if piece has any blocks left
-    const hasBlocks = shape.some(row => row.some(cell => cell > 0));
-    if (!hasBlocks && !piece.hasLanded) {
-        // If piece has no blocks and hasn't landed yet, don't report collision
-        return false;
-    }
-    
-    // Calculate the bottom boundary (where the breakout blocks start)
-    const bottomBoundary = Math.floor(GRID_HEIGHT * 0.65) - 5;  // Same calculation as in initializeBreakoutBlocks
-    
-    for (let y = 0; y < shape.length; y++) {
-        for (let x = 0; x < shape[y].length; x++) {
-            if (shape[y][x] > 0) {
-                const gridX = piece.x + x;
-                const gridY = piece.y + y;
-                
-                // Check boundaries, including the new bottom boundary
-                if (gridX < 0 || gridX >= GRID_WIDTH || gridY >= bottomBoundary) {
-                    return true;
-                }
-                
-                // Check collision with existing blocks, but only if we're within the grid
-                if (gridY >= 0 && gameState.grid[gridY] && gameState.grid[gridY][gridX]) {
-                    return true;
-                }
-            }
-        }
-    }
-    return false;
 }
 
 function lockPiece() {
@@ -846,6 +876,42 @@ function checkTetrisLines() {
 function drawCurrentPiece(p) {
     if (!gameState.currentPiece) return;
     
+    // Find landing position for ghost piece
+    const ghostPiece = findLandingPosition(gameState.currentPiece);
+    
+    // Draw ghost piece first (so it appears behind the actual piece)
+    if (ghostPiece) {
+        p.noStroke();
+        const shape = ghostPiece.shape;
+        
+        for (let y = 0; y < shape.length; y++) {
+            for (let x = 0; x < shape[y].length; x++) {
+                if (shape[y][x] > 0) {
+                    const worldX = (ghostPiece.x + x) * BLOCK_SIZE;
+                    const worldY = (ghostPiece.y + y) * BLOCK_SIZE;
+                    
+                    // Only draw if within canvas bounds
+                    if (ghostPiece.y + y >= 0) {
+                        // Draw ghost piece with lower opacity
+                        let color = ghostPiece.color;
+                        if (color.startsWith('#')) {
+                            const r = parseInt(color.slice(1, 3), 16);
+                            const g = parseInt(color.slice(3, 5), 16);
+                            const b = parseInt(color.slice(5, 7), 16);
+                            p.fill(r, g, b, 50); // Very transparent
+                        } else {
+                            p.fill(ghostPiece.color, 50);
+                        }
+                        
+                        // Draw just the outline of the ghost piece
+                        p.rect(worldX, worldY, BLOCK_SIZE, BLOCK_SIZE);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Draw actual piece
     const piece = gameState.currentPiece;
     const shape = piece.shape;
     
@@ -960,25 +1026,25 @@ function setupMobileControls() {
     
     // Tetris actions - single press only
     setupButtonControls(tetrisLeft, function() {
-        if (gameState.ballsRemaining <= 0) return;
+        if (gameState.ballsRemaining <= 0 || gameState.countdown > 0) return;
         console.log('Tetris LEFT pressed');
         movePieceSideways(-1);
     });
     
     setupButtonControls(tetrisRight, function() {
-        if (gameState.ballsRemaining <= 0) return;
+        if (gameState.ballsRemaining <= 0 || gameState.countdown > 0) return;
         console.log('Tetris RIGHT pressed');
         movePieceSideways(1);
     });
     
     setupButtonControls(tetrisRotate, function() {
-        if (gameState.ballsRemaining <= 0) return;
+        if (gameState.ballsRemaining <= 0 || gameState.countdown > 0) return;
         console.log('Tetris ROTATE pressed');
         rotatePiece();
     });
     
     setupButtonControls(tetrisDown, function() {
-        if (gameState.ballsRemaining <= 0) return;
+        if (gameState.ballsRemaining <= 0 || gameState.countdown > 0) return;
         console.log('Tetris DOWN pressed');
         movePieceDown();
     });
@@ -1016,7 +1082,8 @@ function setupMobileControls() {
     // Set up the continuous movement update function - for paddle only
     const updateInterval = 30; // Update interval in milliseconds
     setInterval(function() {
-        if (gameState.ballsRemaining <= 0) return;
+        // Don't update paddle during countdown or if game is over
+        if (gameState.ballsRemaining <= 0 || gameState.countdown > 0) return;
         
         // Check if paddle position is valid, if not reset it
         if (isNaN(gameState.paddle.x) || gameState.paddle.x === undefined) {
@@ -1067,5 +1134,79 @@ function playSound(sound) {
         }
     } catch (e) {
         console.log('Error with sound:', e);
+    }
+}
+
+// Add a new function to find landing position for pieces
+function findLandingPosition(piece) {
+    if (!piece) return null;
+    
+    // Clone the piece to simulate dropping
+    const ghostPiece = {
+        x: piece.x,
+        y: piece.y,
+        shape: piece.shape.map(row => [...row]), // Deep copy the shape
+        color: piece.color,
+        hasLanded: false
+    };
+    
+    // Move ghost piece down until collision
+    let canMoveDown = true;
+    while (canMoveDown) {
+        ghostPiece.y++;
+        
+        // Check for collision
+        if (wouldCollide(ghostPiece)) {
+            ghostPiece.y--; // Move back up to last valid position
+            canMoveDown = false;
+        }
+    }
+    
+    return ghostPiece;
+}
+
+// Check if a piece would collide at its current position
+function wouldCollide(piece) {
+    if (!piece) return false;
+    
+    const shape = piece.shape;
+    
+    for (let y = 0; y < shape.length; y++) {
+        for (let x = 0; x < shape[y].length; x++) {
+            if (shape[y][x] > 0) {
+                const gridX = piece.x + x;
+                const gridY = piece.y + y;
+                
+                // Check boundaries
+                if (gridX < 0 || gridX >= GRID_WIDTH || gridY >= GRID_HEIGHT) {
+                    return true;
+                }
+                
+                // Check collision with blocks in the grid
+                if (gridY >= 0 && gameState.grid[gridY] && gameState.grid[gridY][gridX]) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+// Add a new function to draw the grid directly on the canvas
+function drawGrid(p) {
+    // Grid color
+    const gridColor = p.color(0, 0, 250, 75); // Dark blue, semi-transparent
+    
+    p.stroke(gridColor);
+    p.strokeWeight(1);
+    
+    // Draw vertical lines
+    for (let x = 0; x <= CANVAS_WIDTH; x += BLOCK_SIZE) {
+        p.line(x, 0, x, CANVAS_HEIGHT);
+    }
+    
+    // Draw horizontal lines
+    for (let y = 0; y <= CANVAS_HEIGHT; y += BLOCK_SIZE) {
+        p.line(0, y, CANVAS_WIDTH, y);
     }
 } 
