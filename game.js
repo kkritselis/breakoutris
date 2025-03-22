@@ -8,8 +8,12 @@ const PADDLE_WIDTH = 80;  // Made paddle slightly smaller for narrower canvas
 const PADDLE_HEIGHT = 15;
 const BALL_SIZE = 10;
 const BALL_SPEED = 5;
+const MOBILE_BALL_SPEED = 3.75; // 25% slower for mobile
 const TETRIS_FALL_SPEED = 1000; // Time in ms between automatic drops
 const TETRIS_MOVE_SPEED = 50;   // Time in ms between moves when key is held
+const PADDLE_BOTTOM_OFFSET = 100; // Distance from bottom of canvas to paddle
+const MAX_BALL_TRAIL_LENGTH = 8; // Maximum number of positions to store for trail effect
+const MIN_SPEED_FOR_TRAIL = BALL_SPEED * 1.2; // Minimum speed to show trail effect
 
 // Tetris Colors
 const TETRIS_COLORS = {
@@ -44,7 +48,7 @@ let gameState = {
     lastMoveTime: 0,
     paddle: {
         x: CANVAS_WIDTH / 2 - PADDLE_WIDTH / 2,
-        y: CANVAS_HEIGHT - 50,
+        y: CANVAS_HEIGHT - PADDLE_BOTTOM_OFFSET,
         width: PADDLE_WIDTH,
         height: PADDLE_HEIGHT
     },
@@ -53,7 +57,14 @@ let gameState = {
         y: 0,
         dx: BALL_SPEED,
         dy: -BALL_SPEED,
-        size: BALL_SIZE
+        size: BALL_SIZE,
+        // Squash and stretch animation properties
+        scaleX: 1.0,
+        scaleY: 1.0,
+        squashTime: 0,
+        squashDuration: 150, // ms
+        // Ball trail effect
+        trail: []
     },
     countdown: 0,      // Countdown value (3,2,1,0)
     countdownStart: 0,  // Time when countdown started
@@ -63,7 +74,31 @@ let gameState = {
     teleportTrailUntil: 0, // When to stop showing teleport trail
     shiftWarning: false, // Whether to show shift warning effect
     shiftWarningUntil: 0, // When to stop showing shift warning
-    gameStarted: false // Flag to check if game has been started
+    gameStarted: false, // Flag to check if game has been started
+    screenShake: {
+        active: false,
+        duration: 0,
+        intensity: 0,
+        startTime: 0,
+        offsetX: 0,
+        offsetY: 0
+    },
+    // Background pulse effect
+    backgroundPulse: {
+        active: false,
+        startTime: 0,
+        duration: 0,
+        color: [0, 0, 0],
+        intensity: 0
+    },
+    ballWins: false  // New flag to track if ball wins
+};
+
+// Tracking variables for continuous movement (for both keyboard and touch controls)
+const buttonStates = {
+    paddleLeft: false,
+    paddleRight: false,
+    tetrisDown: false
 };
 
 // Tetris piece shapes
@@ -80,6 +115,14 @@ const TETRIS_SHAPES = [
 // Create a reference to the p5 instance that we can use in other functions
 let p5Instance;
 
+// Sound settings
+let soundEnabled = true;
+
+// Device detection
+const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
+// Active ball speed based on device
+const activeBallSpeed = isMobile ? MOBILE_BALL_SPEED : BALL_SPEED;
+
 // Wait for DOM to be fully loaded before starting p5
 window.addEventListener('DOMContentLoaded', () => {
     // Set up the start game button
@@ -88,14 +131,46 @@ window.addEventListener('DOMContentLoaded', () => {
         startGameBtn.addEventListener('click', function() {
             console.log('Start game button clicked');
             startGame();
-        });
+        }, { passive: true });
         
         // Also handle touch events for mobile
         startGameBtn.addEventListener('touchend', function(event) {
             console.log('Start game button touched');
             event.preventDefault();
             startGame();
-        });
+        }, { passive: false });
+    }
+    
+    // Set up game over new game button
+    const gameOverNewGameBtn = document.getElementById('game-over-new-game');
+    if (gameOverNewGameBtn) {
+        gameOverNewGameBtn.addEventListener('click', function() {
+            console.log('Game over new game button clicked');
+            resetGame();
+            hideGameOverScreen();
+        }, { passive: true });
+        
+        // Also handle touch events for mobile
+        gameOverNewGameBtn.addEventListener('touchend', function(event) {
+            console.log('Game over new game button touched');
+            event.preventDefault();
+            resetGame();
+            hideGameOverScreen();
+        }, { passive: false });
+    }
+    
+    // Set up sound toggle button
+    const soundToggleBtn = document.getElementById('sound-toggle');
+    if (soundToggleBtn) {
+        soundToggleBtn.addEventListener('click', function() {
+            toggleSound();
+        }, { passive: true });
+        
+        // Also handle touch events for mobile
+        soundToggleBtn.addEventListener('touchend', function(event) {
+            event.preventDefault();
+            toggleSound();
+        }, { passive: false });
     }
     
     // Set up a direct button click handler as a fallback
@@ -108,7 +183,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 event.stopPropagation(); // Stop event from reaching canvas
                 resetGame();
             }
-        });
+        }, { passive: true });
         
         // Also handle touch events directly
         newGameButton.addEventListener('touchend', function(event) {
@@ -118,7 +193,7 @@ window.addEventListener('DOMContentLoaded', () => {
                 event.preventDefault(); // Prevent mouse events
                 resetGame();
             }
-        });
+        }, { passive: false });
     }
 
     // Create p5 instance
@@ -155,88 +230,56 @@ window.addEventListener('DOMContentLoaded', () => {
         };
         
         p.draw = function() {
-            // Set a semi-transparent black background to let the grid show through
-            p.background(0, 220);
+            updateGameState();
+            updateScreenShake();  // Update screen shake values
+            updateBackgroundPulse(); // Update background pulse effect
             
-            // Draw the grid on top of the background
-            drawGrid(p);
-            
-            if (!gameState.gameStarted) {
-                // Game not started yet, just show the grid
-                return;
+            // Apply screen shake by translating the canvas
+            p.push();
+            if (gameState.screenShake.active) {
+                p.translate(gameState.screenShake.offsetX, gameState.screenShake.offsetY);
             }
             
-            if (gameState.ballsRemaining > 0) {
-                // Check if countdown is active
-                if (gameState.countdown > 0) {
-                    // Calculate elapsed time since countdown started
-                    const currentTime = p5Instance.millis();
-                    const elapsedTime = currentTime - gameState.countdownStart;
-                    
-                    // Each number shows for 1 second
-                    const secondsElapsed = Math.floor(elapsedTime / 1000);
-                    const currentNumber = 3 - secondsElapsed;
-                    
-                    if (currentNumber <= 0) {
-                        // Countdown finished, start the game
-                        gameState.countdown = 0;
-                        
-                        // Set ball in motion
-                        gameState.ball.dx = BALL_SPEED * (Math.random() > 0.5 ? 1 : -1);
-                        gameState.ball.dy = -BALL_SPEED;
-                    } else {
-                        // Update countdown display
-                        gameState.countdown = currentNumber;
-                        
-                        // Draw countdown number
-                        p.noStroke();
-                        p.fill(255);
-                        p.textSize(100); // Larger text for countdown (100px)
-                        p.textAlign(p.CENTER, p.CENTER);
-                        p.text(currentNumber, CANVAS_WIDTH/2, CANVAS_HEIGHT/3); // Position higher on the board
-                    }
-                    
-                    // Still draw all game elements during countdown
-                    drawBlocks(p);
-                    drawCurrentPiece(p);
-                    drawPaddle(p);
-                    drawBall(p);
-                } else {
-                    // Normal game update when countdown is over
-                    updateTetris();
-                    updateBall();
-                    
-                    // Draw game elements
-                    drawBlocks(p);
-                    drawCurrentPiece(p);
-                    drawPaddle(p);
-                    drawBall(p);
-                }
-            } else {
-                // Game Over state
-                p.noStroke();
-                p.fill(255);
-                p.textSize(32);
-                p.textAlign(p.CENTER, p.CENTER);
-                p.text('GAME OVER', CANVAS_WIDTH/2, CANVAS_HEIGHT/2);
+            // Apply background pulse effect
+            if (gameState.backgroundPulse.active) {
+                const elapsed = Date.now() - gameState.backgroundPulse.startTime;
+                const progress = elapsed / gameState.backgroundPulse.duration;
                 
-                // Show the new game button
-                const newGameButton = document.getElementById('new-game');
-                if (newGameButton && newGameButton.style.display !== 'block') {
-                    newGameButton.style.display = 'block';
-                    
-                    // Play game over sound
-                    playSound(sounds.gameover);
-                }
+                // Calculate pulse intensity (peaks in the middle of duration)
+                const pulseIntensity = gameState.backgroundPulse.intensity * (1 - Math.pow(2 * progress - 1, 2));
+                
+                // Create a gradient background based on pulse color and intensity
+                const c = gameState.backgroundPulse.color;
+                p.background(0, 220); // Start with semi-transparent black
+                
+                // Draw a radial gradient pulse
+                p.noStroke();
+                p.fill(c[0], c[1], c[2], 100 * pulseIntensity);
+                
+                // Outer pulse circle
+                const pulseSize = Math.max(CANVAS_WIDTH, CANVAS_HEIGHT) * (1 + pulseIntensity);
+                p.circle(CANVAS_WIDTH/2, CANVAS_HEIGHT/2, pulseSize);
+            } else {
+                // Clear the canvas with semi-transparent background
+                p.background(0, 220);
             }
             
-            updateScoreDisplay();
+            // Draw the game
+            drawGame();
+            
+            // Reset translation
+            p.pop();
         };
         
         // Update drawing functions to use p5 instance
         p.mouseMoved = function() {
             // Only respond if game is started and running
             if (!gameState.gameStarted || !p.mouseIsPressed && gameState.ballsRemaining > 0) {
+                // Make sure canvas exists before accessing its properties
+                if (!canvas || !canvas.elt) {
+                    return false;
+                }
+                
                 const rect = canvas.elt.getBoundingClientRect();
                 const scaleX = CANVAS_WIDTH / rect.width;
                 const relativeX = p.mouseX;
@@ -300,6 +343,11 @@ window.addEventListener('DOMContentLoaded', () => {
             }
             
             if (gameState.ballsRemaining > 0 && p.touches.length > 0) {
+                // Make sure canvas exists before accessing its properties
+                if (!canvas || !canvas.elt) {
+                    return false;
+                }
+                
                 const rect = canvas.elt.getBoundingClientRect();
                 const scaleX = CANVAS_WIDTH / rect.width;
                 const relativeX = (p.touches[0].clientX - rect.left) * scaleX;
@@ -326,6 +374,11 @@ window.addEventListener('DOMContentLoaded', () => {
             }
             
             if (gameState.ballsRemaining > 0 && p.touches.length > 0) {
+                // Make sure canvas exists before accessing its properties
+                if (!canvas || !canvas.elt) {
+                    return false;
+                }
+                
                 const rect = canvas.elt.getBoundingClientRect();
                 const scaleX = CANVAS_WIDTH / rect.width;
                 const relativeX = (p.touches[0].clientX - rect.left) * scaleX;
@@ -367,11 +420,70 @@ window.addEventListener('DOMContentLoaded', () => {
             } else if (p.keyCode === 68) {  // 'D' key - move right
                 movePieceSideways(1);
             } else if (p.keyCode === 83) {  // 'S' key - move down
+                // Immediate action and set the key state
                 movePieceDown();
+                buttonStates.tetrisDown = true;
             } else if (p.keyCode === 87) {  // 'W' key - rotate
                 rotatePiece();
             }
         };
+
+        // Add key released function for handling key up events
+        p.keyReleased = function() {
+            // If S key is released, stop the continuous movement
+            if (p.keyCode === 83) { // 'S' key
+                buttonStates.tetrisDown = false;
+            }
+            return true; // Allow default browser behavior for other keys
+        };
+
+        // Setup touch end event for mobile
+        p.touchEnded = function() {
+            // Implement if needed
+            return false;
+        };
+
+        // Override p5's default touch handlers with passive handlers
+        p.registerMethod('post', function() {
+            // Remove p5's default touch handlers
+            if (p._renderer && p._renderer.elt) {
+                let canvas = p._renderer.elt;
+                
+                // Make sure we only do this once
+                if (!canvas._touchHandlersRegistered) {
+                    // Store reference to p5's handlers
+                    const p5TouchStarted = p._events.touchstart;
+                    const p5TouchMoved = p._events.touchmove;
+                    const p5TouchEnded = p._events.touchend;
+                    
+                    // Remove default p5 handlers
+                    canvas.removeEventListener('touchstart', p5TouchStarted);
+                    canvas.removeEventListener('touchmove', p5TouchMoved);
+                    canvas.removeEventListener('touchend', p5TouchEnded);
+                    
+                    // Add our own handlers with passive option
+                    canvas.addEventListener('touchstart', function(e) {
+                        if (p.touchStarted && p.touchStarted() === false) {
+                            e.preventDefault();
+                        }
+                    }, { passive: false });
+                    
+                    canvas.addEventListener('touchmove', function(e) {
+                        if (p.touchMoved && p.touchMoved() === false) {
+                            e.preventDefault();
+                        }
+                    }, { passive: false });
+                    
+                    canvas.addEventListener('touchend', function(e) {
+                        if (p.touchEnded && p.touchEnded() === false) {
+                            e.preventDefault();
+                        }
+                    }, { passive: false });
+                    
+                    canvas._touchHandlersRegistered = true;
+                }
+            }
+        });
     });
 });
 
@@ -408,7 +520,7 @@ function initializeGame() {
     
     gameState.paddle = {
         x: CANVAS_WIDTH / 2 - PADDLE_WIDTH / 2,
-        y: CANVAS_HEIGHT - 50,
+        y: CANVAS_HEIGHT - PADDLE_BOTTOM_OFFSET,
         width: PADDLE_WIDTH,
         height: PADDLE_HEIGHT
     };
@@ -418,7 +530,14 @@ function initializeGame() {
         y: CANVAS_HEIGHT - 100,
         dx: 0, // Start with no movement
         dy: 0, // Start with no movement
-        size: BALL_SIZE
+        size: BALL_SIZE,
+        // Squash and stretch animation properties
+        scaleX: 1.0,
+        scaleY: 1.0,
+        squashTime: 0,
+        squashDuration: 150, // ms
+        // Ball trail effect
+        trail: []
     };
     
     // Don't set countdown yet
@@ -478,6 +597,9 @@ function resetGame() {
         initSounds();
     }
     
+    // Hide the game over screen if it's showing
+    hideGameOverScreen();
+    
     // Reset game state
     gameState.tetrisScore = 0;
     gameState.breakoutScore = 0;
@@ -492,13 +614,14 @@ function resetGame() {
     gameState.shiftWarning = false;
     gameState.shiftWarningUntil = 0;
     gameState.gameStarted = true; // Keep game as started
+    gameState.ballWins = false;  // Reset the ball wins flag
     
     gameState.lastFallTime = p5Instance.millis();
     gameState.lastMoveTime = p5Instance.millis();
     
     gameState.paddle = {
         x: CANVAS_WIDTH / 2 - PADDLE_WIDTH / 2,
-        y: CANVAS_HEIGHT - 50,
+        y: CANVAS_HEIGHT - PADDLE_BOTTOM_OFFSET,
         width: PADDLE_WIDTH,
         height: PADDLE_HEIGHT
     };
@@ -508,7 +631,14 @@ function resetGame() {
         y: CANVAS_HEIGHT - 100,
         dx: 0, // Start with no movement
         dy: 0, // Start with no movement
-        size: BALL_SIZE
+        size: BALL_SIZE,
+        // Squash and stretch animation properties
+        scaleX: 1.0,
+        scaleY: 1.0,
+        squashTime: 0,
+        squashDuration: 150, // ms
+        // Ball trail effect
+        trail: []
     };
     
     // Set countdown
@@ -595,27 +725,83 @@ function initializeBreakoutBlocks() {
 function resetBall() {
     if (gameState.ballsRemaining <= 0) return;
     
-    gameState.ball.x = CANVAS_WIDTH / 2;
-    gameState.ball.y = CANVAS_HEIGHT - 100;
+    // Position the ball at the center of the paddle
+    gameState.ball.x = gameState.paddle.x + gameState.paddle.width / 2;
+    gameState.ball.y = gameState.paddle.y - BALL_SIZE; // Just above the paddle
     
     // Only set ball direction if countdown is over
     if (gameState.countdown <= 0) {
-        gameState.ball.dx = BALL_SPEED * (Math.random() > 0.5 ? 1 : -1);
-        gameState.ball.dy = -BALL_SPEED;
+        gameState.ball.dx = activeBallSpeed * (Math.random() > 0.5 ? 1 : -1);
+        gameState.ball.dy = -activeBallSpeed;
     } else {
         // Keep ball stationary during countdown
         gameState.ball.dx = 0;
         gameState.ball.dy = 0;
     }
+    
+    // Reset the ball element indicator
+    document.getElementById('balls-remaining').innerText = gameState.ballsRemaining;
 }
 
+// Function to trigger ball squash and stretch animation
+function triggerBallSquash(isHorizontal) {
+    const currentTime = Date.now();
+    gameState.ball.squashTime = currentTime;
+    
+    if (isHorizontal) {
+        // Horizontal collision (left/right walls) - squash horizontally
+        gameState.ball.scaleX = 0.65;
+        gameState.ball.scaleY = 1.35;
+    } else {
+        // Vertical collision (paddle/blocks) - squash vertically
+        gameState.ball.scaleX = 1.35;
+        gameState.ball.scaleY = 0.65;
+    }
+}
+
+// Update updateBall function to track ball positions for trail effect
 function updateBall() {
     // Don't update if no balls remaining
     if (gameState.ballsRemaining <= 0) return;
     
+    // Calculate current ball speed
+    const currentSpeed = Math.sqrt(gameState.ball.dx * gameState.ball.dx + gameState.ball.dy * gameState.ball.dy);
+    
+    // Store current position for trail if speed is high enough
+    if (currentSpeed >= MIN_SPEED_FOR_TRAIL) {
+        gameState.ball.trail.push({
+            x: gameState.ball.x,
+            y: gameState.ball.y,
+            size: gameState.ball.size,
+            scaleX: gameState.ball.scaleX,
+            scaleY: gameState.ball.scaleY
+        });
+        
+        // Limit trail length
+        if (gameState.ball.trail.length > MAX_BALL_TRAIL_LENGTH) {
+            gameState.ball.trail.shift(); // Remove oldest position
+        }
+    } else {
+        // Clear trail at low speeds
+        gameState.ball.trail = [];
+    }
+    
     // Update position
     gameState.ball.x += gameState.ball.dx;
     gameState.ball.y += gameState.ball.dy;
+    
+    // Update squash and stretch animation
+    const currentTime = Date.now();
+    if (currentTime - gameState.ball.squashTime < gameState.ball.squashDuration) {
+        // Animation is still active, interpolate back to normal
+        const progress = (currentTime - gameState.ball.squashTime) / gameState.ball.squashDuration;
+        gameState.ball.scaleX = p5Instance.lerp(gameState.ball.scaleX, 1.0, progress * 0.2);
+        gameState.ball.scaleY = p5Instance.lerp(gameState.ball.scaleY, 1.0, progress * 0.2);
+    } else {
+        // Animation is over, reset to normal
+        gameState.ball.scaleX = 1.0;
+        gameState.ball.scaleY = 1.0;
+    }
     
     // Wall collisions
     if (gameState.ball.x - gameState.ball.size/2 <= 0 || 
@@ -627,6 +813,12 @@ function updateBall() {
             gameState.ball.size/2, 
             CANVAS_WIDTH - gameState.ball.size/2
         );
+        
+        // Trigger horizontal squash animation
+        triggerBallSquash(true);
+        
+        // Subtle pulse for wall hit
+        triggerBackgroundPulse([200, 200, 200], 0.15, 200);
     }
     
     // Top wall collision - now teleports ball down and shifts blocks up
@@ -679,6 +871,9 @@ function updateBall() {
         
         // Play a sound for the teleport
         playSound(sounds.tetris);
+        
+        // Strong purple pulse for teleport
+        triggerBackgroundPulse([150, 0, 255], 0.4, 500);
     }
     
     // Paddle collision with angle reflection
@@ -689,14 +884,25 @@ function updateBall() {
         const angle = hitPos * Math.PI / 4; // Max 45 degree reflection
         
         const speed = Math.sqrt(gameState.ball.dx * gameState.ball.dx + gameState.ball.dy * gameState.ball.dy);
-        gameState.ball.dx = speed * Math.sin(angle);
-        gameState.ball.dy = -speed * Math.cos(angle);
         
-        // Ensure ball doesn't get stuck in paddle
+        gameState.ball.dx = Math.sin(angle) * speed;
+        gameState.ball.dy = -Math.cos(angle) * speed;
+        
+        // Ensure ball stays above paddle (prevent infinite collisions)
         gameState.ball.y = gameState.paddle.y - gameState.ball.size/2;
         
-        // Play paddle hit sound
+        // Play paddle sound
         playSound(sounds.paddle);
+        
+        // Add screen shake on paddle hit - intensity based on how far from center
+        const intensityFactor = Math.abs(hitPos) + 0.5; // Ranges from 0.5 to 1.5
+        triggerScreenShake(2 * intensityFactor, 150); // Reduced from 4 to 2
+        
+        // Trigger vertical squash animation
+        triggerBallSquash(false);
+        
+        // Trigger blue pulse effect
+        triggerBackgroundPulse([0, 100, 255], 0.2, 300);
     }
     
     // Ball lost
@@ -738,6 +944,7 @@ function checkBlockCollisions() {
     const ballBottom = Math.floor((gameState.ball.y + gameState.ball.size/2) / BLOCK_SIZE);
     
     let collision = false;
+    let blocksBroken = 0;
     
     // First check collision with falling piece
     if (gameState.currentPiece) {
@@ -762,7 +969,15 @@ function checkBlockCollisions() {
                         // If health reaches zero, remove the block
                         if (shape[y][x] <= 0) {
                             shape[y][x] = 0;
+                            blocksBroken++;
                         }
+                        
+                        // Small screen shake on hit
+                        triggerScreenShake(2.5, 150); // Reduced from 5 to 2.5
+                        
+                        // Trigger squash animation - vertical or horizontal based on collision direction
+                        const isHorizontal = Math.abs(gameState.ball.dx) > Math.abs(gameState.ball.dy);
+                        triggerBallSquash(isHorizontal);
                     }
                 }
             }
@@ -787,11 +1002,28 @@ function checkBlockCollisions() {
                     if (block.health <= 0) {
                         gameState.grid[row][col] = null;  // Remove block only when health is depleted
                         gameState.breakoutScore += 10 * block.maxHealth;  // More points for tougher blocks
+                        blocksBroken++;
                     }
                     collision = true;
+                    
+                    // Small screen shake on hit
+                    triggerScreenShake(2.5, 150); // Reduced from 5 to 2.5
+                    
+                    // Trigger squash animation - vertical or horizontal based on collision direction
+                    const isHorizontal = Math.abs(gameState.ball.dx) > Math.abs(gameState.ball.dy);
+                    triggerBallSquash(isHorizontal);
                 }
             }
         }
+    }
+    
+    // Stronger screen shake when multiple blocks are broken at once
+    if (blocksBroken > 1) {
+        triggerScreenShake(blocksBroken * 1.5, 200); // Reduced from 3 to 1.5
+        
+        // More intense yellow pulse for multiple blocks
+        const intensity = Math.min(0.2 + blocksBroken * 0.05, 0.5); // Cap at 0.5
+        triggerBackgroundPulse([255, 255, 0], intensity, 300);
     }
     
     return collision;
@@ -863,10 +1095,33 @@ function drawBall(p) {
         }
     }
     
-    // Draw the actual ball
+    // Draw speed trail if ball is moving fast enough
+    if (gameState.ball.trail.length > 0) {
+        p.noStroke();
+        
+        // Draw trail points with decreasing opacity
+        for (let i = 0; i < gameState.ball.trail.length; i++) {
+            const point = gameState.ball.trail[i];
+            // Alpha decreases as we go further back in the trail
+            const alpha = 180 * (i / gameState.ball.trail.length);
+            
+            p.push();
+            p.translate(point.x, point.y);
+            p.scale(point.scaleX, point.scaleY);
+            p.fill(255, 255, 255, alpha);
+            p.circle(0, 0, point.size * (0.5 + i / gameState.ball.trail.length * 0.5));
+            p.pop();
+        }
+    }
+    
+    // Draw the actual ball with squash and stretch
+    p.push();
+    p.translate(gameState.ball.x, gameState.ball.y);
+    p.scale(gameState.ball.scaleX, gameState.ball.scaleY);
     p.fill(255);
     p.noStroke();
-    p.circle(gameState.ball.x, gameState.ball.y, gameState.ball.size);
+    p.circle(0, 0, gameState.ball.size);
+    p.pop();
 }
 
 function drawBlocks(p) {
@@ -1029,13 +1284,15 @@ function movePieceDown() {
             checkTetrisLines();
             spawnNewPiece();
             
-            // Check for game over
+            // Check for game over - if new piece collides immediately
             if (wouldCollide(gameState.currentPiece)) {
-                gameState.ballsRemaining = 0;  // End game
+                gameState.ballsRemaining = 0;
+                gameState.ballWins = true;  // Ball wins when blocks reach the top
             }
         } else {
             // If piece collides above grid, end game
             gameState.ballsRemaining = 0;
+            gameState.ballWins = true;  // Ball wins when blocks reach the top
         }
     }
 }
@@ -1286,12 +1543,6 @@ function setupMobileControls() {
     const tetrisRotate = document.getElementById('tetris-rotate');
     const tetrisDown = document.getElementById('tetris-down');
     
-    // Tracking variables for continuous movement (paddle only)
-    const buttonStates = {
-        paddleLeft: false,
-        paddleRight: false
-    };
-    
     // Helper function to setup button press and release events
     function setupContinuousButton(button, startAction, stopAction) {
         if (!button) return;
@@ -1300,33 +1551,33 @@ function setupMobileControls() {
         button.addEventListener('mousedown', function(event) {
             event.preventDefault();
             startAction();
-        });
+        }, { passive: false });
         
         button.addEventListener('mouseup', function(event) {
             event.preventDefault();
             stopAction();
-        });
+        }, { passive: false });
         
         button.addEventListener('mouseleave', function(event) {
             event.preventDefault();
             stopAction();
-        });
+        }, { passive: false });
         
         // For touch events
         button.addEventListener('touchstart', function(event) {
             event.preventDefault();
             startAction();
-        });
+        }, { passive: false });
         
         button.addEventListener('touchend', function(event) {
             event.preventDefault();
             stopAction();
-        });
+        }, { passive: false });
         
         button.addEventListener('touchcancel', function(event) {
             event.preventDefault();
             stopAction();
-        });
+        }, { passive: false });
     }
     
     // Helper function for single press actions
@@ -1336,15 +1587,15 @@ function setupMobileControls() {
         button.addEventListener('mousedown', function(event) {
             event.preventDefault();
             action();
-        });
+        }, { passive: false });
         
         button.addEventListener('touchstart', function(event) {
             event.preventDefault();
             action();
-        });
+        }, { passive: false });
     }
     
-    // Tetris actions - single press only
+    // Tetris left and right - single press only
     setupButtonControls(tetrisLeft, function() {
         // Check if game is started, has balls remaining, and not in countdown
         if (!gameState.gameStarted || gameState.ballsRemaining <= 0 || gameState.countdown > 0) return;
@@ -1364,11 +1615,22 @@ function setupMobileControls() {
         rotatePiece();
     });
     
-    setupButtonControls(tetrisDown, function() {
-        if (!gameState.gameStarted || gameState.ballsRemaining <= 0 || gameState.countdown > 0) return;
-        console.log('Tetris DOWN pressed');
-        movePieceDown();
-    });
+    // Tetris down - continuous hold
+    setupContinuousButton(
+        tetrisDown,
+        function() {
+            // Only activate if game is started
+            if (!gameState.gameStarted || gameState.ballsRemaining <= 0 || gameState.countdown > 0) return;
+            console.log('Tetris DOWN pressed and held');
+            buttonStates.tetrisDown = true;
+            // Initial immediate action
+            movePieceDown();
+        },
+        function() {
+            console.log('Tetris DOWN released');
+            buttonStates.tetrisDown = false;
+        }
+    );
     
     // Continuous paddle movement
     setupContinuousButton(
@@ -1404,7 +1666,7 @@ function setupMobileControls() {
         return Math.min(Math.max(value, min), max);
     }
     
-    // Set up the continuous movement update function - for paddle only
+    // Set up the continuous movement update function - for paddle and tetris down
     const updateInterval = 30; // Update interval in milliseconds
     setInterval(function() {
         // Don't update paddle if game is not started, during countdown, or if game is over
@@ -1437,6 +1699,13 @@ function setupMobileControls() {
                 CANVAS_WIDTH - PADDLE_WIDTH
             );
         }
+        
+        // Process tetris down button if held
+        if (buttonStates.tetrisDown) {
+            // Move piece down at a steady rate when button is held
+            console.log('Continuing to move piece down');
+            movePieceDown();
+        }
     }, updateInterval);
 }
 
@@ -1450,10 +1719,10 @@ function initSounds() {
     sounds.start = document.getElementById('sound-start');
 }
 
-// Play sound with error handling
+// Play sound with error handling - modified to respect sound toggle
 function playSound(sound) {
     try {
-        if (sound) {
+        if (sound && soundEnabled) {
             sound.currentTime = 0; // Reset to start
             sound.play().catch(e => console.log('Error playing sound:', e));
         }
@@ -1621,4 +1890,183 @@ function shiftBlocksUp() {
     // Highlight all rows to show the shift
     gameState.highlightRows = Array.from({length: GRID_HEIGHT}, (_, i) => i);
     gameState.highlightUntil = p5Instance.millis() + 500; // Brief highlight
+}
+
+// Function to trigger screen shake
+function triggerScreenShake(intensity = 10, duration = 300) {
+    gameState.screenShake.active = true;
+    gameState.screenShake.intensity = intensity;
+    gameState.screenShake.duration = duration;
+    gameState.screenShake.startTime = Date.now();
+}
+
+// Function to update screen shake values
+function updateScreenShake() {
+    if (!gameState.screenShake.active) return;
+    
+    const elapsed = Date.now() - gameState.screenShake.startTime;
+    
+    if (elapsed > gameState.screenShake.duration) {
+        // Reset shake when duration is over
+        gameState.screenShake.active = false;
+        gameState.screenShake.offsetX = 0;
+        gameState.screenShake.offsetY = 0;
+        return;
+    }
+    
+    // Calculate remaining shake intensity based on time elapsed
+    const progress = elapsed / gameState.screenShake.duration;
+    const remainingIntensity = gameState.screenShake.intensity * (1 - progress);
+    
+    // Generate random offsets
+    gameState.screenShake.offsetX = (Math.random() * 2 - 1) * remainingIntensity;
+    gameState.screenShake.offsetY = (Math.random() * 2 - 1) * remainingIntensity;
+}
+
+// Function to toggle sound on/off
+function toggleSound() {
+    soundEnabled = !soundEnabled;
+    
+    // Update the sound icon
+    const soundIcon = document.getElementById('sound-icon');
+    if (soundIcon) {
+        soundIcon.textContent = soundEnabled ? '🔊' : '🔇';
+    }
+    
+    console.log('Sound is now ' + (soundEnabled ? 'enabled' : 'disabled'));
+}
+
+// Function to show the game over screen
+function showGameOverScreen() {
+    const gameOverScreen = document.getElementById('game-over-screen');
+    if (gameOverScreen) {
+        // Update winner message
+        const winnerMessage = document.getElementById('winner-message');
+        if (winnerMessage) {
+            // If ballWins is true, ball won, otherwise blocks won
+            winnerMessage.textContent = gameState.ballWins ? "Ball Wins!" : "Block Wins!";
+        }
+        
+        // Show the screen
+        gameOverScreen.style.display = 'flex';
+        
+        // Hide the new game button that's outside the game over screen
+        const newGameButton = document.getElementById('new-game');
+        if (newGameButton) {
+            newGameButton.style.display = 'none';
+        }
+    }
+}
+
+// Function to hide the game over screen
+function hideGameOverScreen() {
+    const gameOverScreen = document.getElementById('game-over-screen');
+    if (gameOverScreen) {
+        gameOverScreen.style.display = 'none';
+    }
+}
+
+// Modified updateGameState function to show game over screen
+function updateGameState() {
+    // Set a semi-transparent black background to let the grid show through
+    
+    if (!gameState.gameStarted) {
+        // Game not started yet, just show the grid
+        return;
+    }
+    
+    if (gameState.ballsRemaining > 0) {
+        // Check if countdown is active
+        if (gameState.countdown > 0) {
+            // Calculate elapsed time since countdown started
+            const currentTime = p5Instance.millis();
+            const elapsedTime = currentTime - gameState.countdownStart;
+            
+            // Each number shows for 1 second
+            const secondsElapsed = Math.floor(elapsedTime / 1000);
+            const currentNumber = 3 - secondsElapsed;
+            
+            if (currentNumber <= 0) {
+                // Countdown finished, start the game
+                gameState.countdown = 0;
+                
+                // Set ball in motion
+                gameState.ball.dx = activeBallSpeed * (Math.random() > 0.5 ? 1 : -1);
+                gameState.ball.dy = -activeBallSpeed;
+            } else {
+                // Update countdown display
+                gameState.countdown = currentNumber;
+            }
+        } else {
+            // Normal game update when countdown is over
+            updateTetris();
+            updateBall();
+        }
+    } else {
+        // Game over
+        const gameOverScreen = document.getElementById('game-over-screen');
+        if (gameOverScreen && gameOverScreen.style.display !== 'flex') {
+            // Show the game over screen if it's not already showing
+            showGameOverScreen();
+            
+            // Play game over sound
+            playSound(sounds.gameover);
+        }
+    }
+    
+    updateScoreDisplay();
+}
+
+// Function to draw the game
+function drawGame() {
+    // Draw the grid on top of the background
+    drawGrid(p5Instance);
+    
+    if (!gameState.gameStarted) {
+        // Game not started yet, just show the grid
+        return;
+    }
+    
+    if (gameState.ballsRemaining > 0) {
+        // Check if countdown is active
+        if (gameState.countdown > 0) {
+            // Draw countdown number
+            p5Instance.noStroke();
+            p5Instance.fill(255);
+            p5Instance.textSize(100); // Larger text for countdown (100px)
+            p5Instance.textAlign(p5Instance.CENTER, p5Instance.CENTER);
+            p5Instance.text(gameState.countdown, CANVAS_WIDTH/2, CANVAS_HEIGHT/3); // Position higher on the board
+        }
+        
+        // Draw game elements
+        drawBlocks(p5Instance);
+        drawCurrentPiece(p5Instance);
+        drawPaddle(p5Instance);
+        drawBall(p5Instance);
+    } else {
+        // Game Over state - just draw the grid and blocks
+        drawBlocks(p5Instance);
+    }
+}
+
+// Function to trigger background pulse effect
+function triggerBackgroundPulse(color = [0, 120, 255], intensity = 0.3, duration = 400) {
+    gameState.backgroundPulse.active = true;
+    gameState.backgroundPulse.startTime = Date.now();
+    gameState.backgroundPulse.duration = duration;
+    gameState.backgroundPulse.color = color;
+    gameState.backgroundPulse.intensity = intensity;
+}
+
+// Function to update background pulse effect
+function updateBackgroundPulse() {
+    if (!gameState.backgroundPulse.active) return;
+    
+    const elapsed = Date.now() - gameState.backgroundPulse.startTime;
+    
+    if (elapsed > gameState.backgroundPulse.duration) {
+        // Reset pulse when duration is over
+        gameState.backgroundPulse.active = false;
+        return;
+    }
 } 

@@ -3,6 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <!-- iOS full-screen mode meta tags -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Breakoutris">
+    <meta name="theme-color" content="#000000">
+    
+    <!-- Home screen icon for iOS -->
+    <link rel="apple-touch-icon" href="logo.png">
+    
     <title>Breakoutris</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
@@ -16,9 +26,25 @@
 
       gtag('config', 'G-9XHQWB6B3E');
     </script>
+    
+    <!-- iOS full-screen script -->
+    <script>
+      // When loaded from home screen icon, iOS will open in full-screen mode
+      // This script helps with orientation and sizing
+      window.addEventListener('load', function() {
+        // Attempt to scroll to hide any browser UI on iOS
+        setTimeout(function() {
+          window.scrollTo(0, 1);
+        }, 0);
+      });
+    </script>
 </head>
-<body><a target="_blank" href="https://jam.pieter.com" style="font-family: 'system-ui', sans-serif; position: fixed; bottom: -1px; right: -1px; padding: 7px; font-size: 14px; font-weight: bold; background: #fff; color: #000; text-decoration: none; z-index: 10; border-top-left-radius: 12px; z-index: 10000; border: 1px solid #fff;">🕹️ Vibe Jam 2025</a>
+<body><a target="_blank" href="https://jam.pieter.com" class="jam-link">🕹️ Vibe Jam 2025</a>
+    <a target="_blank" href="https://store.steampowered.com/app/3214080/Scramble_Up/" class="steam-link">🎮 wishlist my non-vibe coded game on Steam</a>
     <div class="game-wrapper">
+        <button id="sound-toggle" class="control-button">
+            <span id="sound-icon">🔊</span>
+        </button>
         <img src="logo.png" alt="Breakoutris" class="game-logo">
         
         <div class="game-area">
@@ -40,6 +66,19 @@
                             </div>
                         </div>
                         <button id="start-game-btn" class="start-game-btn">Start Game</button>
+                    </div>
+                </div>
+                
+                <!-- Game over screen overlay -->
+                <div id="game-over-screen" class="start-screen">
+                    <div class="start-screen-content">
+                        <h2>Game Over</h2>
+                        <div id="game-results">
+                            <p id="winner-message"></p>
+                        </div>
+                        <div class="game-over-controls">
+                            <button id="game-over-new-game" class="start-game-btn">New Game</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -65,12 +104,12 @@
     </div>
 
     <!-- Audio elements for game sounds -->
-    <audio id="sound-paddle" src="sounds/paddle.mp3" preload="auto"></audio>
-    <audio id="sound-block" src="sounds/block.mp3" preload="auto"></audio>
-    <audio id="sound-tetris" src="sounds/tetris.mp3" preload="auto"></audio>
-    <audio id="sound-gameover" src="sounds/gameover.mp3" preload="auto"></audio>
-    <audio id="sound-ball-lost" src="sounds/ball-lost.mp3" preload="auto"></audio>
-    <audio id="sound-start" src="sounds/start.mp3" preload="auto"></audio>
+    <audio id="sound-paddle" src="sounds/paddle.wav" preload="auto"></audio>
+    <audio id="sound-block" src="sounds/block.wav" preload="auto"></audio>
+    <audio id="sound-tetris" src="sounds/tetris.wav" preload="auto"></audio>
+    <audio id="sound-gameover" src="sounds/gameover.wav" preload="auto"></audio>
+    <audio id="sound-ball-lost" src="sounds/ball-lost.wav" preload="auto"></audio>
+    <audio id="sound-start" src="sounds/start.ogg" preload="auto"></audio>
     
     <script src="game.js"></script>
 </body>

@@ -5,6 +5,54 @@
     box-sizing: border-box;
 }
 
+/* Vibe Jam link - rotated to save space */
+.jam-link {
+    font-family: 'system-ui', sans-serif;
+    position: fixed;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%) rotate(-90deg) translateX(50%);
+    transform-origin: right bottom;
+    padding: 7px 10px;
+    font-size: 14px;
+    font-weight: bold;
+    background: #fff;
+    color: #000;
+    text-decoration: none;
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+    z-index: 10000;
+    border: 1px solid #fff;
+    white-space: nowrap;
+}
+
+/* Steam link - rotated on left side */
+.steam-link {
+    font-family: 'system-ui', sans-serif;
+    position: fixed;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%) rotate(90deg) translateX(-50%);
+    transform-origin: left bottom;
+    padding: 7px 10px;
+    font-size: 14px;
+    font-weight: bold;
+    background: #f70ae8; /* Steam blue color */
+    color: #000;
+    text-decoration: none;
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+    z-index: 10000;
+    border: 1px solid #1b2838;
+    white-space: nowrap;
+}
+
+/* Fix for iOS 100vh issue in full screen mode */
+html {
+    height: -webkit-fill-available;
+    overflow: hidden; /* Prevent overscroll/bounce */
+}
+
 :root {
     --grid-color: rgba(0, 0, 100, 0.3);
     --grid-size: 30px;
@@ -19,10 +67,16 @@ body {
     align-items: center;
     justify-content: center;
     min-height: 100vh;
+    min-height: -webkit-fill-available; /* iOS height fix */
     background-image: url('bkgd.png');
     background-repeat: repeat;
     background-color: #2a2a2a; /* Fallback color */
     font-family: Arial, sans-serif;
+    overscroll-behavior: none; /* Prevent overscroll/bounce */
+    touch-action: manipulation; /* Disable double-tap zoom */
+    position: fixed; /* Another approach to prevent scroll on iOS */
+    width: 100%;
+    height: 100%;
 }
 
 .game-wrapper {
@@ -34,6 +88,7 @@ body {
     background-image: url('bkgd.png');
     background-repeat: repeat;
     padding: 0;
+    position: relative;
 }
 
 .game-logo {
@@ -50,6 +105,7 @@ body {
     align-items: center;
     z-index: 1;
     background-color: rgba(0, 0, 0, 0.7);
+    max-height: 90vh;
 }
 
 /* Start screen overlay */
@@ -202,6 +258,44 @@ button#new-game:hover {
         padding: 8px 20px;
         font-size: 16px;
     }
+    
+    .game-area {
+        padding: 0 60px; /* Smaller padding to give more room for the game */
+    }
+    
+    .control-button {
+        width: 45px;  /* Slightly smaller buttons on smaller screens */
+        height: 45px;
+    }
+    
+    /* Ensure canvas is fully visible */
+    .canvas-container {
+        max-height: 80vh;
+    }
+    
+    /* Make links smaller on mobile */
+    .jam-link {
+        font-size: 12px;
+        padding: 5px 8px;
+        transform: translateY(-50%) rotate(-90deg) translateX(40%);
+    }
+    
+    .steam-link {
+        font-size: 11px;
+        padding: 5px 8px;
+        transform: translateY(-50%) rotate(90deg) translateX(-40%);
+    }
+}
+
+/* iPhone-specific adjustments */
+@media (max-width: 414px) and (min-height: 700px) {
+    .paddle-left, .paddle-right {
+        bottom: 150px; /* Even higher on iPhones */
+    }
+    
+    .canvas-container {
+        max-height: 75vh;
+    }
 }
 
 /* Game area to contain canvas and controls */
@@ -217,6 +311,8 @@ button#new-game:hover {
 /* Mobile controls */
 .mobile-controls {
     position: absolute;
+    font-weight: bold;
+    color:#fff;
     top: 0;
     left: 0;
     width: 100%;
@@ -229,12 +325,11 @@ button#new-game:hover {
     width: 50px;
     height: 50px;
     border-radius: 50%;
+    color:#fff;
     border: none;
     display: flex;
-    align-items: center;
     justify-content: center;
-    font-size: 24px;
-    cursor: pointer;
+    font-size: 36px;
     -webkit-tap-highlight-color: transparent;
     user-select: none;
     touch-action: manipulation;
@@ -245,38 +340,38 @@ button#new-game:hover {
 /* Tetris controls at the top */
 .tetris-left {
     top: 20px;
-    left: 10px;
+    left: 5px;
     background-color: rgba(255, 100, 100, 0.4);
 }
 
 .tetris-right {
     top: 20px;
-    right: 10px;
+    right: 5px;
     background-color: rgba(255, 100, 100, 0.4);
 }
 
 .tetris-rotate {
     top: 80px;
-    left: 10px;
+    left: 5px;
     background-color: rgba(255, 100, 100, 0.4);
 }
 
 .tetris-down {
     top: 80px;
-    right: 10px;
+    right: 5px;
     background-color: rgba(255, 100, 100, 0.4);
 }
 
 /* Paddle controls - positioned at paddle level */
 .paddle-left {
-    bottom: 80px;
-    left: 10px;
+    bottom: 110px;
+    left: 5px;
     background-color: rgba(0, 150, 255, 0.4);
 }
 
 .paddle-right {
-    bottom: 80px;
-    right: 10px;
+    bottom: 110px;
+    right: 5px;
     background-color: rgba(0, 150, 255, 0.4);
 }
 
@@ -289,4 +384,58 @@ button#new-game:hover {
     .mobile-controls {
         display: none;
     }
+}
+
+/* Game over screen specific styles */
+#game-over-screen {
+    display: none; /* Initially hidden */
+}
+
+#game-results {
+    margin-bottom: 20px;
+    font-size: 18px;
+}
+
+#winner-message {
+    font-size: 28px;
+    font-weight: bold;
+    margin-bottom: 20px;
+    color: #4CAF50;
+    text-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+}
+
+.game-over-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+}
+
+#sound-toggle {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: #d1b424;
+    color: white;
+    border: none;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    font-size: 20px;
+    transition: background-color 0.3s;
+    position: absolute;
+    top: 10px;
+    left: 25px;
+    z-index: 1000;
+    opacity: 0.8;
+}
+
+#sound-toggle:hover {
+    background: #303f9f;
+    opacity: 1;
+}
+
+#sound-icon {
+    pointer-events: none;
 } 
