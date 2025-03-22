@@ -17,13 +17,31 @@
       gtag('config', 'G-9XHQWB6B3E');
     </script>
 </head>
-<body>
+<body><a target="_blank" href="https://jam.pieter.com" style="font-family: 'system-ui', sans-serif; position: fixed; bottom: -1px; right: -1px; padding: 7px; font-size: 14px; font-weight: bold; background: #fff; color: #000; text-decoration: none; z-index: 10; border-top-left-radius: 12px; z-index: 10000; border: 1px solid #fff;">🕹️ Vibe Jam 2025</a>
     <div class="game-wrapper">
         <img src="logo.png" alt="Breakoutris" class="game-logo">
         
         <div class="game-area">
             <div class="canvas-container">
                 <!-- p5.js will inject the canvas here -->
+                
+                <!-- Start screen overlay -->
+                <div id="start-screen" class="start-screen">
+                    <div class="start-screen-content">
+                        <h2 class="desktop-instructions">How to Play</h2>
+                        <h2 class="mobile-instructions">You know what to do, who can survive the longest?</h2>
+                        <div class="instructions">
+                            <div class="desktop-instructions">
+                                <p>Mouse controls paddle.</p>
+                                <p>WASD controls falling pieces.</p>
+                            </div>
+                            <div class="mobile-instructions">
+                                <p>Use buttons on sides to control paddle and falling pieces.</p>
+                            </div>
+                        </div>
+                        <button id="start-game-btn" class="start-game-btn">Start Game</button>
+                    </div>
+                </div>
             </div>
             
             <!-- Mobile controls - positioned absolutely around the canvas -->

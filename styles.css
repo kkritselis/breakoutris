@@ -52,6 +52,80 @@ body {
     background-color: rgba(0, 0, 0, 0.7);
 }
 
+/* Start screen overlay */
+.start-screen {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.25);
+    z-index: 100;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.start-screen-content {
+    background-color: rgba(40, 40, 60, 0.9);
+    border-radius: 10px;
+    padding: 20px;
+    width: 80%;
+    max-width: 320px;
+    text-align: center;
+    color: white;
+    box-shadow: 0 0 20px rgba(0, 0, 255, 0.5);
+}
+
+.start-screen h2 {
+    font-size: 24px;
+    margin-bottom: 15px;
+    color: #4CAF50;
+}
+
+.instructions {
+    margin-bottom: 20px;
+    text-align: left;
+}
+
+.instructions p {
+    margin: 5px 0;
+    font-size: 16px;
+}
+
+.desktop-instructions, .mobile-instructions {
+    margin-bottom: 15px;
+}
+
+/* Hide mobile instructions on desktop */
+@media (min-width: 1024px) {
+    .mobile-instructions {
+        display: none;
+    }
+}
+
+/* Hide desktop instructions on mobile */
+@media (max-width: 1023px) {
+    .desktop-instructions {
+        display: none;
+    }
+}
+
+.start-game-btn {
+    background: #4CAF50;
+    color: white;
+    border: none;
+    padding: 10px 30px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 18px;
+    transition: background-color 0.3s;
+}
+
+.start-game-btn:hover {
+    background: #45a049;
+}
+
 /* Add gap only between canvas and scores */
 .canvas-container + .scores {
     margin-top: 20px;
@@ -109,6 +183,24 @@ button#new-game:hover {
     
     .game-logo {
         /* Removed max-width property */
+    }
+    
+    .start-screen-content {
+        width: 90%;
+        padding: 15px;
+    }
+    
+    .start-screen h2 {
+        font-size: 20px;
+    }
+    
+    .instructions p {
+        font-size: 14px;
+    }
+    
+    .start-game-btn {
+        padding: 8px 20px;
+        font-size: 16px;
     }
 }
 

@@ -38,6 +38,7 @@ let gameState = {
     breakoutScore: 0,
     ballsRemaining: 5,
     grid: Array(GRID_HEIGHT).fill().map(() => Array(GRID_WIDTH).fill(null)),
+    gridBeforeLastPiece: null, // Store grid state before the latest piece is placed
     currentPiece: null,
     lastFallTime: 0,
     lastMoveTime: 0,
@@ -55,7 +56,14 @@ let gameState = {
         size: BALL_SIZE
     },
     countdown: 0,      // Countdown value (3,2,1,0)
-    countdownStart: 0  // Time when countdown started
+    countdownStart: 0,  // Time when countdown started
+    highlightRows: [], // Rows to highlight (newly added rows)
+    highlightUntil: 0,  // Timestamp until when to highlight
+    teleportTrail: [], // Positions for teleport trail effect
+    teleportTrailUntil: 0, // When to stop showing teleport trail
+    shiftWarning: false, // Whether to show shift warning effect
+    shiftWarningUntil: 0, // When to stop showing shift warning
+    gameStarted: false // Flag to check if game has been started
 };
 
 // Tetris piece shapes
@@ -74,6 +82,22 @@ let p5Instance;
 
 // Wait for DOM to be fully loaded before starting p5
 window.addEventListener('DOMContentLoaded', () => {
+    // Set up the start game button
+    const startGameBtn = document.getElementById('start-game-btn');
+    if (startGameBtn) {
+        startGameBtn.addEventListener('click', function() {
+            console.log('Start game button clicked');
+            startGame();
+        });
+        
+        // Also handle touch events for mobile
+        startGameBtn.addEventListener('touchend', function(event) {
+            console.log('Start game button touched');
+            event.preventDefault();
+            startGame();
+        });
+    }
+    
     // Set up a direct button click handler as a fallback
     const newGameButton = document.getElementById('new-game');
     if (newGameButton) {
@@ -126,8 +150,8 @@ window.addEventListener('DOMContentLoaded', () => {
             // Set up mobile controls after p5 is initialized
             setupMobileControls();
             
-            // Initialize game
-            resetGame();
+            // Initialize game (but don't start yet)
+            initializeGame();
         };
         
         p.draw = function() {
@@ -136,6 +160,11 @@ window.addEventListener('DOMContentLoaded', () => {
             
             // Draw the grid on top of the background
             drawGrid(p);
+            
+            if (!gameState.gameStarted) {
+                // Game not started yet, just show the grid
+                return;
+            }
             
             if (gameState.ballsRemaining > 0) {
                 // Check if countdown is active
@@ -206,7 +235,8 @@ window.addEventListener('DOMContentLoaded', () => {
         
         // Update drawing functions to use p5 instance
         p.mouseMoved = function() {
-            if (!p.mouseIsPressed && gameState.ballsRemaining > 0) {
+            // Only respond if game is started and running
+            if (!gameState.gameStarted || !p.mouseIsPressed && gameState.ballsRemaining > 0) {
                 const rect = canvas.elt.getBoundingClientRect();
                 const scaleX = CANVAS_WIDTH / rect.width;
                 const relativeX = p.mouseX;
@@ -227,6 +257,11 @@ window.addEventListener('DOMContentLoaded', () => {
         };
         
         p.mousePressed = function() {
+            // If game is not started, ignore all other mouse presses
+            if (!gameState.gameStarted) {
+                return true;
+            }
+            
             // Check if the new game button was clicked
             if (gameState.ballsRemaining <= 0) {
                 const newGameButton = document.getElementById('new-game');
@@ -244,6 +279,11 @@ window.addEventListener('DOMContentLoaded', () => {
         };
         
         p.touchStarted = function() {
+            // If game is not started, ignore touch events
+            if (!gameState.gameStarted) {
+                return false;
+            }
+            
             // Check if new game button was touched
             if (gameState.ballsRemaining <= 0 && p.touches.length > 0) {
                 const newGameButton = document.getElementById('new-game');
@@ -280,6 +320,11 @@ window.addEventListener('DOMContentLoaded', () => {
         };
         
         p.touchMoved = function() {
+            // If game is not started, ignore touch events
+            if (!gameState.gameStarted) {
+                return false;
+            }
+            
             if (gameState.ballsRemaining > 0 && p.touches.length > 0) {
                 const rect = canvas.elt.getBoundingClientRect();
                 const scaleX = CANVAS_WIDTH / rect.width;
@@ -301,6 +346,11 @@ window.addEventListener('DOMContentLoaded', () => {
         };
         
         p.keyPressed = function() {
+            // If game is not started, ignore key presses
+            if (!gameState.gameStarted) {
+                return;
+            }
+            
             // Don't respond to keys if game is over or during countdown
             if (gameState.ballsRemaining <= 0 || gameState.countdown > 0) return;
             
@@ -325,6 +375,97 @@ window.addEventListener('DOMContentLoaded', () => {
     });
 });
 
+// Function to initialize the game (but not start it yet)
+function initializeGame() {
+    console.log('initializeGame function called');
+    if (!p5Instance) {
+        console.error('p5 instance not initialized');
+        return;
+    }
+    
+    // Initialize sounds if not already done
+    if (!sounds.paddle) {
+        initSounds();
+    }
+    
+    // Initialize game state
+    gameState.tetrisScore = 0;
+    gameState.breakoutScore = 0;
+    gameState.ballsRemaining = 5;
+    gameState.grid = Array(GRID_HEIGHT).fill().map(() => Array(GRID_WIDTH).fill(null));
+    gameState.gridBeforeLastPiece = null;
+    gameState.currentPiece = null;
+    gameState.highlightRows = [];
+    gameState.highlightUntil = 0;
+    gameState.teleportTrail = [];
+    gameState.teleportTrailUntil = 0;
+    gameState.shiftWarning = false;
+    gameState.shiftWarningUntil = 0;
+    gameState.gameStarted = false; // Set game as not started yet
+    
+    gameState.lastFallTime = p5Instance.millis();
+    gameState.lastMoveTime = p5Instance.millis();
+    
+    gameState.paddle = {
+        x: CANVAS_WIDTH / 2 - PADDLE_WIDTH / 2,
+        y: CANVAS_HEIGHT - 50,
+        width: PADDLE_WIDTH,
+        height: PADDLE_HEIGHT
+    };
+    
+    gameState.ball = {
+        x: CANVAS_WIDTH / 2,
+        y: CANVAS_HEIGHT - 100,
+        dx: 0, // Start with no movement
+        dy: 0, // Start with no movement
+        size: BALL_SIZE
+    };
+    
+    // Don't set countdown yet
+    gameState.countdown = 0;
+    
+    // Show the start screen
+    const startScreen = document.getElementById('start-screen');
+    if (startScreen) {
+        startScreen.style.display = 'flex';
+    }
+    
+    // Hide the new game button
+    const newGameButton = document.getElementById('new-game');
+    if (newGameButton) {
+        newGameButton.style.display = 'none';
+    }
+    
+    // Update all score displays
+    updateScoreDisplay();
+    document.getElementById('balls-remaining').textContent = gameState.ballsRemaining;
+}
+
+// Function to start the game when the start button is clicked
+function startGame() {
+    // Hide the start screen
+    const startScreen = document.getElementById('start-screen');
+    if (startScreen) {
+        startScreen.style.display = 'none';
+    }
+    
+    // Set game as started
+    gameState.gameStarted = true;
+    
+    // Initialize breakout blocks
+    initializeBreakoutBlocks();
+    
+    // Spawn first Tetris piece
+    spawnNewPiece();
+    
+    // Set countdown
+    gameState.countdown = 3;
+    gameState.countdownStart = p5Instance.millis();
+    
+    // Play start sound
+    playSound(sounds.start);
+}
+
 function resetGame() {
     console.log('resetGame function called');
     if (!p5Instance) {
@@ -342,7 +483,15 @@ function resetGame() {
     gameState.breakoutScore = 0;
     gameState.ballsRemaining = 5;
     gameState.grid = Array(GRID_HEIGHT).fill().map(() => Array(GRID_WIDTH).fill(null));
+    gameState.gridBeforeLastPiece = null;
     gameState.currentPiece = null;
+    gameState.highlightRows = [];
+    gameState.highlightUntil = 0;
+    gameState.teleportTrail = [];
+    gameState.teleportTrailUntil = 0;
+    gameState.shiftWarning = false;
+    gameState.shiftWarningUntil = 0;
+    gameState.gameStarted = true; // Keep game as started
     
     gameState.lastFallTime = p5Instance.millis();
     gameState.lastMoveTime = p5Instance.millis();
@@ -392,7 +541,7 @@ function initializeBreakoutBlocks() {
     const startRow = Math.floor(GRID_HEIGHT * 0.7) - rows;
     const colors = Object.values(TETRIS_COLORS);
     
-    // Clear any existing blocks in the target area first
+    // Clear any existing blocks in the target area and below
     for (let row = startRow; row < GRID_HEIGHT; row++) {
         for (let col = 0; col < GRID_WIDTH; col++) {
             gameState.grid[row][col] = null;
@@ -426,6 +575,19 @@ function initializeBreakoutBlocks() {
                 maxHealth: health  // Store original health for color calculation
             };
             gameState.grid[startRow + row][col] = block;
+        }
+    }
+    
+    // If there's an active piece, check if it would now collide with the breakout blocks
+    if (gameState.currentPiece) {
+        // If the current piece would collide, move it up enough to avoid collision
+        while (wouldCollide(gameState.currentPiece) && gameState.currentPiece.y > 0) {
+            gameState.currentPiece.y--;
+        }
+        
+        // If it would still collide at the top, generate a new piece
+        if (wouldCollide(gameState.currentPiece)) {
+            spawnNewPiece();
         }
     }
 }
@@ -467,10 +629,56 @@ function updateBall() {
         );
     }
     
-    // Top wall collision
+    // Top wall collision - now teleports ball down and shifts blocks up
     if (gameState.ball.y - gameState.ball.size/2 <= 0) {
-        gameState.ball.dy *= -1;
-        gameState.ball.y = gameState.ball.size/2;
+        // Create teleport trail effect
+        gameState.teleportTrail = [];
+        
+        // Store current ball position for trail start
+        gameState.teleportTrail.push({
+            x: gameState.ball.x,
+            y: gameState.ball.y,
+            size: gameState.ball.size
+        });
+        
+        // Find position to teleport the ball (below lowest block)
+        let lowestBlockRow = -1;
+        for (let row = GRID_HEIGHT - 1; row >= 0; row--) {
+            if (gameState.grid[row].some(cell => cell !== null)) {
+                lowestBlockRow = row;
+                break;
+            }
+        }
+        
+        // Place the ball below the lowest block (or halfway down the grid if no blocks)
+        const newY = (lowestBlockRow >= 0) 
+                      ? (lowestBlockRow + 1) * BLOCK_SIZE + gameState.ball.size * 2
+                      : CANVAS_HEIGHT / 2;
+                      
+        // Add trail points between old and new positions
+        const steps = 5; // Number of trail points
+        for (let i = 1; i <= steps; i++) {
+            gameState.teleportTrail.push({
+                x: gameState.ball.x,
+                y: gameState.ball.y * (1 - i/steps) + newY * (i/steps),
+                size: gameState.ball.size * (1 - (i * 0.15))
+            });
+        }
+        
+        // Teleport the ball down, keeping its trajectory
+        gameState.ball.y = newY;
+        
+        // Set trail duration
+        gameState.teleportTrailUntil = p5Instance.millis() + 500; // Show for 500ms
+        
+        // Shift all blocks up one row
+        shiftBlocksUp();
+        
+        // Award points for teleporting (reaching the top)
+        gameState.breakoutScore += 50;
+        
+        // Play a sound for the teleport
+        playSound(sounds.tetris);
     }
     
     // Paddle collision with angle reflection
@@ -641,47 +849,80 @@ function drawPaddle(p) {
 }
 
 function drawBall(p) {
+    // Draw teleport trail if active
+    const currentTime = p5Instance.millis();
+    if (currentTime < gameState.teleportTrailUntil && gameState.teleportTrail.length > 0) {
+        p.noStroke();
+        
+        // Draw trail points with decreasing opacity
+        for (let i = 0; i < gameState.teleportTrail.length; i++) {
+            const point = gameState.teleportTrail[i];
+            const alpha = 255 * (1 - i / gameState.teleportTrail.length) * 0.7;
+            p.fill(255, 255, 255, alpha);
+            p.circle(point.x, point.y, point.size);
+        }
+    }
+    
+    // Draw the actual ball
     p.fill(255);
     p.noStroke();
     p.circle(gameState.ball.x, gameState.ball.y, gameState.ball.size);
 }
 
 function drawBlocks(p) {
-    p.noStroke();
+    // Current time for highlighting
+    const currentTime = p5Instance.millis();
+    const shouldHighlight = currentTime < gameState.highlightUntil;
+    
+    // Draw breakout blocks using p5
     for (let row = 0; row < GRID_HEIGHT; row++) {
         for (let col = 0; col < GRID_WIDTH; col++) {
             const block = gameState.grid[row][col];
             if (block) {
-                const x = col * BLOCK_SIZE;
-                const y = row * BLOCK_SIZE;
+                const worldX = col * BLOCK_SIZE;
+                const worldY = row * BLOCK_SIZE;
                 
-                // Calculate color based on remaining health
-                const healthRatio = block.health / block.maxHealth;
+                // Check if this row should be highlighted (newly added)
+                const isHighlightedRow = shouldHighlight && gameState.highlightRows.includes(row);
+                
+                p.noStroke();
                 
                 // Parse the color to extract RGB components
-                let baseColor = block.color;
-                if (baseColor.startsWith('#')) {
-                    const r = parseInt(baseColor.slice(1, 3), 16);
-                    const g = parseInt(baseColor.slice(3, 5), 16);
-                    const b = parseInt(baseColor.slice(5, 7), 16);
-                    const alpha = 255 * (0.5 + 0.5 * healthRatio);
-                    p.fill(r, g, b, alpha);
+                let color = block.color;
+                if (color.startsWith('#')) {
+                    const r = parseInt(color.slice(1, 3), 16);
+                    const g = parseInt(color.slice(3, 5), 16);
+                    const b = parseInt(color.slice(5, 7), 16);
+                    
+                    // Calculate color based on health ratio
+                    const healthRatio = block.health / block.maxHealth;
+                    
+                    // For highlighted rows, add a pulsing white effect
+                    if (isHighlightedRow) {
+                        // Calculate a pulse effect (0 to 1)
+                        const pulse = (Math.sin(currentTime * 0.01) + 1) / 2;
+                        // Increase the brightness for highlight effect
+                        const highlightAmount = 100 + (pulse * 155);
+                        p.fill(
+                            Math.min(r + highlightAmount, 255),
+                            Math.min(g + highlightAmount, 255),
+                            Math.min(b + highlightAmount, 255),
+                            255 * (0.3 + 0.7 * healthRatio)
+                        );
+                    } else {
+                        // Regular coloring based on health
+                        p.fill(r, g, b, 255 * (0.3 + 0.7 * healthRatio));
+                    }
                 } else {
-                    // Fallback for non-hex colors
-                    const baseColorObj = p.color(baseColor);
-                    const r = p.red(baseColorObj) * (0.5 + 0.5 * healthRatio);
-                    const g = p.green(baseColorObj) * (0.5 + 0.5 * healthRatio);
-                    const b = p.blue(baseColorObj) * (0.5 + 0.5 * healthRatio);
-                    p.fill(r, g, b);
+                    p.fill(color);
                 }
                 
-                // Draw filled block
-                p.rect(x, y, BLOCK_SIZE, BLOCK_SIZE);
+                p.rect(worldX, worldY, BLOCK_SIZE, BLOCK_SIZE);
                 
                 // Add subtle darker bottom and right edges for depth
                 p.fill(0, 40);
-                p.rect(x + BLOCK_SIZE - 2, y, 2, BLOCK_SIZE);
-                p.rect(x, y + BLOCK_SIZE - 2, BLOCK_SIZE, 2);
+                p.rect(worldX + BLOCK_SIZE - 2, worldY, 2, BLOCK_SIZE);
+                p.rect(worldX, worldY + BLOCK_SIZE - 2, BLOCK_SIZE, 2);
             }
         }
     }
@@ -700,13 +941,37 @@ function spawnNewPiece() {
     // Deep copy the shape to avoid modifying the original TETRIS_SHAPES
     const shapeCopy = shape.map(row => row.map(cell => cell === 1 ? 3 : 0)); // Set health to 3 for blocks
     
+    // Initialize gridBeforeLastPiece if this is the first piece
+    if (gameState.gridBeforeLastPiece === null) {
+        gameState.gridBeforeLastPiece = JSON.parse(JSON.stringify(gameState.grid));
+    }
+    
+    // Find the highest row with blocks to make sure we spawn above it
+    let highestBlockRow = GRID_HEIGHT;
+    for (let row = 0; row < GRID_HEIGHT; row++) {
+        if (gameState.grid[row].some(cell => cell !== null)) {
+            highestBlockRow = row;
+            break;
+        }
+    }
+    
+    // Default spawn position is at top
+    let spawnY = 0;
+    
+    // Create the piece
     gameState.currentPiece = {
         x: Math.floor(GRID_WIDTH / 2) - Math.floor(shape[0].length / 2),
-        y: 0,
+        y: spawnY,
         shape: shapeCopy,
         color: pieceColor,
         hasLanded: false // Track if the piece has landed yet
     };
+    
+    // Check if the newly spawned piece would collide
+    if (wouldCollide(gameState.currentPiece)) {
+        // Game over if we can't spawn a piece at the top
+        gameState.ballsRemaining = 0;
+    }
 }
 
 function updateTetris() {
@@ -744,7 +1009,7 @@ function movePieceDown() {
     // Try moving down
     gameState.currentPiece.y++;
     
-    // Check if this causes a collision
+    // Check if this causes a collision (either with existing blocks, game boundaries, or lowest block row)
     if (wouldCollide(gameState.currentPiece)) {
         // Move back up
         gameState.currentPiece.y--;
@@ -811,6 +1076,9 @@ function rotatePiece() {
 function lockPiece() {
     if (!gameState.currentPiece) return;
     
+    // Save the grid state before placing the piece
+    gameState.gridBeforeLastPiece = JSON.parse(JSON.stringify(gameState.grid));
+    
     const piece = gameState.currentPiece;
     const shape = piece.shape;
     let validLock = false;
@@ -842,6 +1110,7 @@ function lockPiece() {
 
 function checkTetrisLines() {
     let linesCleared = 0;
+    let clearedLines = [];
     
     // Start from the bottom of the grid
     for (let row = GRID_HEIGHT - 1; row >= 0; row--) {
@@ -850,6 +1119,7 @@ function checkTetrisLines() {
         
         if (isLineFull) {
             linesCleared++;
+            clearedLines.push(row); // Store the row index of cleared line
             
             // Move all rows above this one down
             for (let y = row; y > 0; y--) {
@@ -864,8 +1134,58 @@ function checkTetrisLines() {
         }
     }
     
-    // Update score based on number of lines cleared
-    if (linesCleared > 0) {
+    // Add cleared lines to the breakout section if any lines were cleared
+    if (linesCleared > 0 && gameState.gridBeforeLastPiece) {
+        // Find the lowest block in the grid
+        let lowestBlockRow = -1;
+        for (let row = GRID_HEIGHT - 1; row >= 0; row--) {
+            if (gameState.grid[row].some(cell => cell !== null)) {
+                lowestBlockRow = row;
+                break;
+            }
+        }
+        
+        // Only add lines if there's space below the lowest block
+        if (lowestBlockRow < GRID_HEIGHT - 1) {
+            let insertRow = lowestBlockRow + 1;
+            
+            // Add at most linesCleared rows (limited by available space)
+            let rowsToAdd = Math.min(linesCleared, GRID_HEIGHT - 1 - lowestBlockRow);
+            
+            // Track which rows are added for highlighting
+            gameState.highlightRows = [];
+            
+            // Move existing rows down to make space
+            for (let row = GRID_HEIGHT - 1 - rowsToAdd; row >= insertRow; row--) {
+                gameState.grid[row + rowsToAdd] = [...gameState.grid[row]];
+            }
+            
+            // Add the cleared lines in their original state (before latest piece was placed)
+            for (let i = 0; i < rowsToAdd; i++) {
+                if (i < clearedLines.length) {
+                    let originalRowIndex = clearedLines[i];
+                    gameState.grid[insertRow + i] = gameState.gridBeforeLastPiece[originalRowIndex].map(cell => {
+                        // Return a copy of the cell if it exists
+                        if (cell !== null) {
+                            return {
+                                color: cell.color,
+                                health: cell.health,
+                                maxHealth: cell.maxHealth
+                            };
+                        }
+                        return null;
+                    });
+                    
+                    // Add row to highlight list
+                    gameState.highlightRows.push(insertRow + i);
+                }
+            }
+            
+            // Set highlight duration (1.5 seconds)
+            gameState.highlightUntil = p5Instance.millis() + 1500;
+        }
+        
+        // Update score based on number of lines cleared
         gameState.tetrisScore += linesCleared * 100;
         
         // Play tetris sound for lines cleared
@@ -1026,25 +1346,26 @@ function setupMobileControls() {
     
     // Tetris actions - single press only
     setupButtonControls(tetrisLeft, function() {
-        if (gameState.ballsRemaining <= 0 || gameState.countdown > 0) return;
+        // Check if game is started, has balls remaining, and not in countdown
+        if (!gameState.gameStarted || gameState.ballsRemaining <= 0 || gameState.countdown > 0) return;
         console.log('Tetris LEFT pressed');
         movePieceSideways(-1);
     });
     
     setupButtonControls(tetrisRight, function() {
-        if (gameState.ballsRemaining <= 0 || gameState.countdown > 0) return;
+        if (!gameState.gameStarted || gameState.ballsRemaining <= 0 || gameState.countdown > 0) return;
         console.log('Tetris RIGHT pressed');
         movePieceSideways(1);
     });
     
     setupButtonControls(tetrisRotate, function() {
-        if (gameState.ballsRemaining <= 0 || gameState.countdown > 0) return;
+        if (!gameState.gameStarted || gameState.ballsRemaining <= 0 || gameState.countdown > 0) return;
         console.log('Tetris ROTATE pressed');
         rotatePiece();
     });
     
     setupButtonControls(tetrisDown, function() {
-        if (gameState.ballsRemaining <= 0 || gameState.countdown > 0) return;
+        if (!gameState.gameStarted || gameState.ballsRemaining <= 0 || gameState.countdown > 0) return;
         console.log('Tetris DOWN pressed');
         movePieceDown();
     });
@@ -1053,6 +1374,8 @@ function setupMobileControls() {
     setupContinuousButton(
         paddleLeft,
         function() {
+            // Only activate if game is started
+            if (!gameState.gameStarted) return;
             console.log('Paddle LEFT pressed');
             buttonStates.paddleLeft = true;
         },
@@ -1065,6 +1388,8 @@ function setupMobileControls() {
     setupContinuousButton(
         paddleRight,
         function() {
+            // Only activate if game is started
+            if (!gameState.gameStarted) return;
             console.log('Paddle RIGHT pressed');
             buttonStates.paddleRight = true;
         },
@@ -1082,8 +1407,8 @@ function setupMobileControls() {
     // Set up the continuous movement update function - for paddle only
     const updateInterval = 30; // Update interval in milliseconds
     setInterval(function() {
-        // Don't update paddle during countdown or if game is over
-        if (gameState.ballsRemaining <= 0 || gameState.countdown > 0) return;
+        // Don't update paddle if game is not started, during countdown, or if game is over
+        if (!gameState.gameStarted || gameState.ballsRemaining <= 0 || gameState.countdown > 0) return;
         
         // Check if paddle position is valid, if not reset it
         if (isNaN(gameState.paddle.x) || gameState.paddle.x === undefined) {
@@ -1150,12 +1475,21 @@ function findLandingPosition(piece) {
         hasLanded: false
     };
     
+    // Find the lowest row that contains a block
+    let lowestBlockRow = -1;
+    for (let row = GRID_HEIGHT - 1; row >= 0; row--) {
+        if (gameState.grid[row].some(cell => cell !== null)) {
+            lowestBlockRow = row;
+            break;
+        }
+    }
+    
     // Move ghost piece down until collision
     let canMoveDown = true;
     while (canMoveDown) {
         ghostPiece.y++;
         
-        // Check for collision
+        // Check for collision with blocks or grid limits
         if (wouldCollide(ghostPiece)) {
             ghostPiece.y--; // Move back up to last valid position
             canMoveDown = false;
@@ -1170,6 +1504,15 @@ function wouldCollide(piece) {
     if (!piece) return false;
     
     const shape = piece.shape;
+    
+    // Find the lowest row that contains a block
+    let lowestBlockRow = -1;
+    for (let row = GRID_HEIGHT - 1; row >= 0; row--) {
+        if (gameState.grid[row].some(cell => cell !== null)) {
+            lowestBlockRow = row;
+            break;
+        }
+    }
     
     for (let y = 0; y < shape.length; y++) {
         for (let x = 0; x < shape[y].length; x++) {
@@ -1186,16 +1529,27 @@ function wouldCollide(piece) {
                 if (gridY >= 0 && gameState.grid[gridY] && gameState.grid[gridY][gridX]) {
                     return true;
                 }
+                
+                // Prevent falling below the lowest block row
+                if (lowestBlockRow >= 0 && gridY > lowestBlockRow) {
+                    return true;
+                }
             }
         }
     }
     return false;
 }
 
-// Add a new function to draw the grid directly on the canvas
+// Modified p.draw function to add warning flash
 function drawGrid(p) {
-    // Grid color
-    const gridColor = p.color(0, 0, 250, 75); // Dark blue, semi-transparent
+    // Check if we should show shift warning
+    const currentTime = p5Instance.millis();
+    const showWarning = gameState.shiftWarning && currentTime < gameState.shiftWarningUntil;
+    
+    // Grid color - red during warning, normal blue otherwise
+    const gridColor = showWarning 
+        ? p.color(255, 0, 0, 150 + Math.sin(currentTime * 0.05) * 75) // Pulsing red during warning
+        : p.color(0, 0, 250, 75); // Normal blue
     
     p.stroke(gridColor);
     p.strokeWeight(1);
@@ -1209,4 +1563,62 @@ function drawGrid(p) {
     for (let y = 0; y <= CANVAS_HEIGHT; y += BLOCK_SIZE) {
         p.line(0, y, CANVAS_WIDTH, y);
     }
+    
+    // Add a red overlay during warning for extra emphasis
+    if (showWarning) {
+        // Calculate a pulsing alpha value
+        const warningAlpha = 30 + Math.sin(currentTime * 0.01) * 20;
+        
+        // Draw a semi-transparent red overlay
+        p.noStroke();
+        p.fill(255, 0, 0, warningAlpha);
+        p.rect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    }
+}
+
+// New function to shift all blocks up one row
+function shiftBlocksUp() {
+    // Check if there's already blocks at the top row, which would end the game
+    if (gameState.grid[0].some(cell => cell !== null)) {
+        gameState.ballsRemaining = 0; // Game over
+        return;
+    }
+    
+    // Show shift warning effect
+    gameState.shiftWarning = true;
+    gameState.shiftWarningUntil = p5Instance.millis() + 500; // 500ms warning
+    
+    // If there's a current piece, move it up by one row to maintain relative position
+    if (gameState.currentPiece) {
+        gameState.currentPiece.y -= 1;
+        
+        // If this creates a collision, it's game over
+        if (wouldCollide(gameState.currentPiece)) {
+            gameState.ballsRemaining = 0; // Game over
+            return;
+        }
+    }
+    
+    // Shift all rows up by one
+    for (let row = 0; row < GRID_HEIGHT - 1; row++) {
+        gameState.grid[row] = [...gameState.grid[row + 1]];
+    }
+    
+    // Create empty bottom row
+    gameState.grid[GRID_HEIGHT - 1] = Array(GRID_WIDTH).fill(null);
+    
+    // Also update gridBeforeLastPiece if it exists
+    if (gameState.gridBeforeLastPiece) {
+        // Shift it up too
+        for (let row = 0; row < GRID_HEIGHT - 1; row++) {
+            gameState.gridBeforeLastPiece[row] = [...gameState.gridBeforeLastPiece[row + 1]];
+        }
+        
+        // Create empty bottom row
+        gameState.gridBeforeLastPiece[GRID_HEIGHT - 1] = Array(GRID_WIDTH).fill(null);
+    }
+    
+    // Highlight all rows to show the shift
+    gameState.highlightRows = Array.from({length: GRID_HEIGHT}, (_, i) => i);
+    gameState.highlightUntil = p5Instance.millis() + 500; // Brief highlight
 } 
